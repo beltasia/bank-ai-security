@@ -1,5 +1,7 @@
 "use client"
 
+import { Input } from "@/components/ui/input"
+
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +16,7 @@ import { CaseTimeline } from "@/components/case-timeline"
 import { CaseEvidence } from "@/components/case-evidence"
 import { CaseTransactions } from "@/components/case-transactions"
 import { CaseCollaboration } from "@/components/case-collaboration"
+import { EmailResponseTracker } from "@/components/email-response-tracker"
 import {
   ArrowLeft,
   User,
@@ -29,7 +32,34 @@ import {
   XCircle,
   ArrowUp,
   UserCheck,
+  Mail,
+  Send,
+  X,
+  MailOpen,
 } from "lucide-react"
+
+interface EmailThread {
+  id: string
+  subject: string
+  type: "investigate" | "escalate" | "false_positive" | "general"
+  priority: "low" | "normal" | "high" | "urgent"
+  sentAt: string
+  sentBy: string
+  recipients: string[]
+  status: "sent" | "delivered" | "read" | "replied"
+  responses: EmailResponse[]
+  attachments: string[]
+}
+
+interface EmailResponse {
+  id: string
+  threadId: string
+  from: string
+  message: string
+  timestamp: string
+  type: "reply" | "forward" | "question" | "answer"
+  readBy: string[]
+}
 
 interface CaseDetailsProps {
   caseId: string
@@ -48,6 +78,65 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
   const [assignmentNotes, setAssignmentNotes] = useState("")
   const [newStatus, setNewStatus] = useState("")
   const [statusReason, setStatusReason] = useState("")
+
+  const [showEmailDialog, setShowEmailDialog] = useState(false)
+  const [emailType, setEmailType] = useState<"investigate" | "escalate" | "false_positive" | "">("")
+  const [emailRecipients, setEmailRecipients] = useState<string[]>([])
+  const [emailSubject, setEmailSubject] = useState("")
+  const [emailMessage, setEmailMessage] = useState("")
+  const [emailPriority, setEmailPriority] = useState("normal")
+  const [includeAttachments, setIncludeAttachments] = useState(false)
+
+  // Email tracking state
+  const [emailThreads, setEmailThreads] = useState<EmailThread[]>([
+    {
+      id: "email-001",
+      subject: "Investigation Started: Suspicious Wire Transfer Pattern (CASE-2024-001)",
+      type: "investigate",
+      priority: "high",
+      sentAt: "2024-01-15T14:30:00Z",
+      sentBy: "Tendai Mukamuri",
+      recipients: ["Chipo Nyathi", "Blessing Moyo"],
+      status: "replied",
+      attachments: ["case-summary.pdf", "transaction-log.xlsx"],
+      responses: [
+        {
+          id: "response-001",
+          threadId: "email-001",
+          from: "Chipo Nyathi",
+          message:
+            "I've reviewed the transaction patterns. The velocity and amounts are indeed suspicious. I recommend we contact the customer immediately and request documentation for all transactions over $50,000. Should we also place a temporary hold on the account?",
+          timestamp: "2024-01-15T15:45:00Z",
+          type: "reply",
+          readBy: ["Tendai Mukamuri", "Blessing Moyo"],
+        },
+        {
+          id: "response-002",
+          threadId: "email-001",
+          from: "Blessing Moyo",
+          message:
+            "From a compliance perspective, we need to file a SAR within 30 days if this investigation confirms suspicious activity. I've prepared the preliminary documentation. Question: Do we have the customer's updated KYC information?",
+          timestamp: "2024-01-15T16:20:00Z",
+          type: "question",
+          readBy: ["Tendai Mukamuri"],
+        },
+      ],
+    },
+    {
+      id: "email-002",
+      subject: "Follow-up: Customer Contact Attempt",
+      type: "general",
+      priority: "normal",
+      sentAt: "2024-01-15T17:00:00Z",
+      sentBy: "Chipo Nyathi",
+      recipients: ["Tendai Mukamuri"],
+      status: "read",
+      attachments: [],
+      responses: [],
+    },
+  ])
+
+  const [showEmailTracker, setShowEmailTracker] = useState(false)
 
   // Mock case data - in real app, this would be fetched based on caseId
   const [caseData, setCaseData] = useState({
@@ -80,15 +169,70 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
       initials: "TM",
       role: "Senior Investigator",
       department: "Fraud Investigation",
+      email: "tendai.mukamuri@nmb.co.zw",
     },
-    { id: "2", name: "Chipo Nyathi", initials: "CN", role: "Fraud Analyst", department: "Risk Management" },
-    { id: "3", name: "Blessing Moyo", initials: "BM", role: "Compliance Officer", department: "Compliance" },
-    { id: "4", name: "Tatenda Sibanda", initials: "TS", role: "Risk Manager", department: "Risk Management" },
-    { id: "5", name: "Rumbidzai Dube", initials: "RD", role: "AML Specialist", department: "AML" },
-    { id: "6", name: "Farai Ncube", initials: "FN", role: "Senior Analyst", department: "Analytics" },
-    { id: "7", name: "Precious Mpofu", initials: "PM", role: "Investigation Lead", department: "Fraud Investigation" },
-    { id: "8", name: "Takudzwa Chirwa", initials: "TC", role: "Compliance Analyst", department: "Compliance" },
+    {
+      id: "2",
+      name: "Chipo Nyathi",
+      initials: "CN",
+      role: "Fraud Analyst",
+      department: "Risk Management",
+      email: "chipo.nyathi@nmb.co.zw",
+    },
+    {
+      id: "3",
+      name: "Blessing Moyo",
+      initials: "BM",
+      role: "Compliance Officer",
+      department: "Compliance",
+      email: "blessing.moyo@nmb.co.zw",
+    },
+    {
+      id: "4",
+      name: "Tatenda Sibanda",
+      initials: "TS",
+      role: "Risk Manager",
+      department: "Risk Management",
+      email: "tatenda.sibanda@nmb.co.zw",
+    },
+    {
+      id: "5",
+      name: "Rumbidzai Dube",
+      initials: "RD",
+      role: "AML Specialist",
+      department: "AML",
+      email: "rumbidzai.dube@nmb.co.zw",
+    },
+    {
+      id: "6",
+      name: "Farai Ncube",
+      initials: "FN",
+      role: "Senior Analyst",
+      department: "Analytics",
+      email: "farai.ncube@nmb.co.zw",
+    },
+    {
+      id: "7",
+      name: "Precious Mpofu",
+      initials: "PM",
+      role: "Investigation Lead",
+      department: "Fraud Investigation",
+      email: "precious.mpofu@nmb.co.zw",
+    },
+    {
+      id: "8",
+      name: "Takudzwa Chirwa",
+      initials: "TC",
+      role: "Compliance Analyst",
+      department: "Compliance",
+      email: "takudzwa.chirwa@nmb.co.zw",
+    },
   ]
+
+  const addEmailToTimeline = (emailData: EmailThread) => {
+    // In real app, this would update the database and trigger timeline refresh
+    console.log("Adding email to timeline:", emailData)
+  }
 
   const handleInvestigate = () => {
     setCaseData((prev) => ({
@@ -97,11 +241,33 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
       lastActivity: new Date().toISOString(),
     }))
 
-    // Add timeline entry
-    console.log("Case status changed to investigating")
+    // Set up email dialog for investigation
+    setEmailType("investigate")
+    setEmailRecipients([caseData.assignee])
+    setEmailSubject(`Investigation Started: ${caseData.title} (${caseData.id})`)
+    setEmailMessage(`Dear ${caseData.assignee},
 
-    // In real app, this would make an API call
-    alert("Case status updated to 'Investigating'. Investigation workflow has been initiated.")
+Investigation has been initiated for case ${caseData.id}: ${caseData.title}
+
+Case Details:
+- Customer: ${caseData.customerName}
+- Amount: ${caseData.amount}
+- Risk Score: ${caseData.riskScore}
+- Priority: ${caseData.priority}
+
+Please review the case details and begin your investigation. If you have any questions or need additional information, please respond to this email.
+
+Key areas to focus on:
+- Transaction pattern analysis
+- Customer verification
+- Documentation review
+- Risk assessment validation
+
+Best regards,
+Fraud Investigation Team`)
+    setShowEmailDialog(true)
+
+    console.log("Case status changed to investigating")
   }
 
   const handleEscalate = () => {
@@ -117,14 +283,45 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
       lastActivity: new Date().toISOString(),
     }))
 
-    // Add timeline entry
-    console.log("Case escalated:", { reason: escalationReason, priority: escalationPriority })
+    // Set up email dialog for escalation
+    setEmailType("escalate")
+    setEmailRecipients(["Senior Management", "Compliance Team", caseData.assignee])
+    setEmailSubject(`URGENT ESCALATION: ${caseData.title} (${caseData.id})`)
+    setEmailMessage(`URGENT: Case Escalation Required
+
+Case ID: ${caseData.id}
+Title: ${caseData.title}
+Priority: ${escalationPriority.toUpperCase()}
+Assigned to: ${caseData.assignee}
+
+ESCALATION REASON:
+${escalationReason}
+
+Case Summary:
+- Customer: ${caseData.customerName}
+- Amount: ${caseData.amount}
+- Risk Score: ${caseData.riskScore}
+- Days Open: 3
+
+This case requires immediate senior management attention. Please review and provide guidance on next steps.
+
+Questions for Management:
+1. Should we involve external authorities?
+2. Do we need additional resources assigned?
+3. Are there any specific compliance requirements?
+4. Should we implement immediate account restrictions?
+
+Please respond with your recommendations and any additional questions.
+
+Regards,
+${caseData.assignee}
+Fraud Investigation Team`)
+    setEmailPriority("urgent")
+    setShowEmailDialog(true)
 
     setShowEscalateDialog(false)
     setEscalationReason("")
     setEscalationPriority("high")
-
-    alert(`Case has been escalated with ${escalationPriority} priority. Senior management has been notified.`)
   }
 
   const handleAssign = () => {
@@ -187,11 +384,107 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
         lastActivity: new Date().toISOString(),
       }))
 
+      // Set up email dialog for false positive
+      setEmailType("false_positive")
+      setEmailRecipients(["Compliance Team", "Risk Management", "System Admin"])
+      setEmailSubject(`False Positive Confirmation: ${caseData.title} (${caseData.id})`)
+      setEmailMessage(`Case Marked as False Positive
+
+Case ID: ${caseData.id}
+Title: ${caseData.title}
+Customer: ${caseData.customerName}
+Original Risk Score: ${caseData.riskScore}
+
+After thorough investigation, this case has been determined to be a false positive alert.
+
+Investigation Summary:
+- All transactions were legitimate and properly authorized
+- Customer provided satisfactory documentation
+- No suspicious patterns identified upon detailed review
+- Risk factors were within acceptable parameters
+
+Actions Taken:
+- Customer contacted and verified transactions
+- Documentation reviewed and validated
+- Account activity analyzed for 90-day period
+- Cross-referenced with known fraud patterns
+
+Questions for System Improvement:
+1. Can we adjust the detection algorithm to reduce similar false positives?
+2. Should we update the risk scoring model based on this case?
+3. Are there additional data points we should consider?
+4. Should we implement pre-screening for similar transaction patterns?
+
+This case will be added to the false positive database for future reference and system training.
+
+Please confirm receipt and provide any feedback on system improvements.
+
+Best regards,
+${caseData.assignee}
+Fraud Investigation Team`)
+      setShowEmailDialog(true)
+
       console.log("Case marked as false positive")
-      alert(
-        "Case has been marked as a false positive and closed. The alert has been added to the false positive database for future reference.",
-      )
     }
+  }
+
+  const handleSendEmail = () => {
+    if (!emailMessage.trim() || emailRecipients.length === 0) {
+      alert("Please provide email content and select recipients")
+      return
+    }
+
+    // Create new email thread
+    const newEmailThread: EmailThread = {
+      id: `email-${Date.now()}`,
+      subject: emailSubject,
+      type: emailType as "investigate" | "escalate" | "false_positive",
+      priority: emailPriority as "low" | "normal" | "high" | "urgent",
+      sentAt: new Date().toISOString(),
+      sentBy: caseData.assignee,
+      recipients: emailRecipients,
+      status: "sent",
+      responses: [],
+      attachments: includeAttachments ? ["case-summary.pdf", "evidence-package.zip"] : [],
+    }
+
+    // Add to email threads
+    setEmailThreads((prev) => [newEmailThread, ...prev])
+
+    // Add to timeline
+    addEmailToTimeline(newEmailThread)
+
+    // In real app, this would send actual emails
+    console.log("Sending email:", {
+      type: emailType,
+      recipients: emailRecipients,
+      subject: emailSubject,
+      message: emailMessage,
+      priority: emailPriority,
+      attachments: includeAttachments,
+      caseId: caseData.id,
+    })
+
+    setShowEmailDialog(false)
+
+    // Reset email form
+    setEmailType("")
+    setEmailRecipients([])
+    setEmailSubject("")
+    setEmailMessage("")
+    setEmailPriority("normal")
+    setIncludeAttachments(false)
+
+    const actionText =
+      emailType === "investigate"
+        ? "Investigation started"
+        : emailType === "escalate"
+          ? "Case escalated"
+          : "Case marked as false positive"
+
+    alert(
+      `${actionText} and email notifications sent to relevant stakeholders. Email tracking is now active - you can monitor responses in the timeline.`,
+    )
   }
 
   const getStatusBadge = (status: string) => {
@@ -235,6 +528,37 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
     }
   }
 
+  const getEmailStatusBadge = (status: string) => {
+    switch (status) {
+      case "sent":
+        return (
+          <Badge variant="outline" className="text-blue-600">
+            Sent
+          </Badge>
+        )
+      case "delivered":
+        return (
+          <Badge variant="outline" className="text-green-600">
+            Delivered
+          </Badge>
+        )
+      case "read":
+        return (
+          <Badge variant="outline" className="text-purple-600">
+            Read
+          </Badge>
+        )
+      case "replied":
+        return (
+          <Badge variant="outline" className="text-orange-600">
+            Replied
+          </Badge>
+        )
+      default:
+        return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -248,6 +572,16 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
           <p className="text-gray-600">Case ID: {caseData.id}</p>
         </div>
         <div className="flex gap-2">
+          {/* Email Tracker Button */}
+          <Button
+            variant="outline"
+            onClick={() => setShowEmailTracker(true)}
+            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+          >
+            <MailOpen className="h-4 w-4 mr-2" />
+            Email Tracker ({emailThreads.length})
+          </Button>
+
           {/* Escalate Dialog */}
           <Dialog open={showEscalateDialog} onOpenChange={setShowEscalateDialog}>
             <DialogTrigger asChild>
@@ -497,6 +831,13 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
                 </div>
                 <span className="font-semibold">3</span>
               </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-indigo-500" />
+                  <span className="text-sm">Email Threads</span>
+                </div>
+                <span className="font-semibold">{emailThreads.length}</span>
+              </div>
             </CardContent>
           </Card>
 
@@ -567,7 +908,7 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
         </TabsList>
 
         <TabsContent value="timeline" className="mt-6">
-          <CaseTimeline caseId={caseData.id} />
+          <CaseTimeline caseId={caseData.id} emailThreads={emailThreads} />
         </TabsContent>
 
         <TabsContent value="transactions" className="mt-6">
@@ -621,6 +962,249 @@ export function CaseDetails({ caseId, onBack }: CaseDetailsProps) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Email Response Tracker Dialog */}
+      <EmailResponseTracker
+        isOpen={showEmailTracker}
+        onClose={() => setShowEmailTracker(false)}
+        emailThreads={emailThreads}
+        setEmailThreads={setEmailThreads}
+        caseId={caseData.id}
+      />
+
+      {/* Email Dialog */}
+      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              {emailType === "investigate" && "Send Investigation Notification"}
+              {emailType === "escalate" && "Send Escalation Alert"}
+              {emailType === "false_positive" && "Send False Positive Notification"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Email Recipients */}
+            <div>
+              <Label htmlFor="email-recipients">Recipients</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {emailRecipients.map((recipient, index) => (
+                  <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    {recipient}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-4 w-4 p-0 hover:bg-transparent"
+                      onClick={() => setEmailRecipients((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
+              </div>
+              <Select
+                onValueChange={(value) => {
+                  if (!emailRecipients.includes(value)) {
+                    setEmailRecipients((prev) => [...prev, value])
+                  }
+                }}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder="Add recipients..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {teamMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.name}>
+                      {member.name} - {member.role}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="Senior Management">Senior Management</SelectItem>
+                  <SelectItem value="Compliance Team">Compliance Team</SelectItem>
+                  <SelectItem value="Risk Management">Risk Management</SelectItem>
+                  <SelectItem value="System Admin">System Admin</SelectItem>
+                  <SelectItem value="Legal Department">Legal Department</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Email Priority */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="email-priority">Priority</Label>
+                <Select value={emailPriority} onValueChange={setEmailPriority}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low Priority</SelectItem>
+                    <SelectItem value="normal">Normal Priority</SelectItem>
+                    <SelectItem value="high">High Priority</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center space-x-2 mt-6">
+                <input
+                  type="checkbox"
+                  id="include-attachments"
+                  checked={includeAttachments}
+                  onChange={(e) => setIncludeAttachments(e.target.checked)}
+                  className="rounded"
+                />
+                <Label htmlFor="include-attachments">Include case attachments</Label>
+              </div>
+            </div>
+
+            {/* Email Subject */}
+            <div>
+              <Label htmlFor="email-subject">Subject</Label>
+              <Input
+                id="email-subject"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+
+            {/* Email Message */}
+            <div>
+              <Label htmlFor="email-message">Message</Label>
+              <Textarea
+                id="email-message"
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                className="min-h-[300px] mt-1"
+                placeholder="Type your message here..."
+              />
+            </div>
+
+            {/* Suggested Questions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Suggested Questions to Include</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {emailType === "investigate" && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-left justify-start h-auto p-2"
+                        onClick={() =>
+                          setEmailMessage(
+                            (prev) =>
+                              prev +
+                              "\n\nQuestions:\n1. Do you need additional resources for this investigation?\n2. Are there any specific areas of concern?\n3. What is your estimated timeline for completion?",
+                          )
+                        }
+                      >
+                        + Add investigation questions
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-left justify-start h-auto p-2"
+                        onClick={() =>
+                          setEmailMessage(
+                            (prev) =>
+                              prev +
+                              "\n\n4. Should we contact the customer immediately?\n5. Do you need access to additional transaction history?\n6. Are there any compliance considerations?",
+                          )
+                        }
+                      >
+                        + Add resource questions
+                      </Button>
+                    </>
+                  )}
+                  {emailType === "escalate" && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-left justify-start h-auto p-2"
+                        onClick={() =>
+                          setEmailMessage(
+                            (prev) =>
+                              prev +
+                              "\n\nAdditional Questions:\n1. Should we involve law enforcement?\n2. Do we need to freeze the account immediately?\n3. Are there regulatory reporting requirements?",
+                          )
+                        }
+                      >
+                        + Add escalation questions
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-left justify-start h-auto p-2"
+                        onClick={() =>
+                          setEmailMessage(
+                            (prev) =>
+                              prev +
+                              "\n\n4. Should we contact other financial institutions?\n5. Do we need external forensic analysis?\n6. What are the potential reputational risks?",
+                          )
+                        }
+                      >
+                        + Add management questions
+                      </Button>
+                    </>
+                  )}
+                  {emailType === "false_positive" && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-left justify-start h-auto p-2"
+                        onClick={() =>
+                          setEmailMessage(
+                            (prev) =>
+                              prev +
+                              "\n\nSystem Improvement Questions:\n1. How can we prevent similar false positives?\n2. Should we adjust the risk scoring algorithm?\n3. Are there additional data points to consider?",
+                          )
+                        }
+                      >
+                        + Add system improvement questions
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-left justify-start h-auto p-2"
+                        onClick={() =>
+                          setEmailMessage(
+                            (prev) =>
+                              prev +
+                              "\n\n4. Should we update training materials?\n5. Do we need to review similar historical cases?\n6. Are there process improvements needed?",
+                          )
+                        }
+                      >
+                        + Add process questions
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button variant="outline" onClick={() => setShowEmailDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSendEmail} className="bg-blue-600 hover:bg-blue-700">
+                <Send className="h-4 w-4 mr-2" />
+                Send Email &{" "}
+                {emailType === "investigate"
+                  ? "Start Investigation"
+                  : emailType === "escalate"
+                    ? "Escalate Case"
+                    : "Mark False Positive"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
